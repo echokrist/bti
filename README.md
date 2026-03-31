@@ -124,4 +124,4 @@ src/
 
 ## License
 
-See repository for license information.
+MIT - see [LICENSE](LICENSE) for details.

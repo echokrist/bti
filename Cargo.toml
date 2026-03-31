@@ -3,3 +3,4 @@ name = "bti"
 authors = ["Kristian N Albrigtsen<echokrist@pm.me>"]
 version = "1.0.0"
 edition = "2024"
+license = "MIT"

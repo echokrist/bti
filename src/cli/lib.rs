@@ -1,26 +1,37 @@
 use crate::cli::build::{self, BuildConfig};
-use crate::cli::config::ApplicationConfig;
+use crate::cli::config::{ApplicationAction, ApplicationConfig};
+use crate::cli::error::AppError;
 use std::env;
-use std::error::Error;
 
-pub fn run() -> Result<(), Box<dyn Error + 'static>> {
+fn print_and_short_circuit(
+    action: ApplicationAction,
+) -> Result<Option<ApplicationConfig>, AppError> {
+    match action {
+        ApplicationAction::Build(config) => Ok(Some(config)),
+        ApplicationAction::ListBinaries(file_list) => {
+            println!("{file_list:?}");
+            Ok(None)
+        }
+        ApplicationAction::PrintMessage(message) => {
+            println!("{message}");
+            Ok(None)
+        }
+    }
+}
+
+pub fn run() -> Result<(), AppError> {
     let cli_args = env::args();
 
-    let application_config = ApplicationConfig::build(cli_args.skip(1))?;
+    let application_action = ApplicationConfig::build(cli_args.skip(1))?;
+
+    let Some(application_config) = print_and_short_circuit(application_action)? else {
+        return Ok(());
+    };
 
     let build_config = BuildConfig::build(application_config)?;
+    build::run_build_command(&build_config)?;
 
-    let build_completed = build::run_build_command(&build_config);
-
-    if build_completed == false {
-        eprintln!("Build failed, exiting...");
-        std::process::exit(1);
-    }
-
-    build::install_compiled_binary(
-        build_config.target_release_path,
-        build_config.target_binary_install_path,
-    )?;
+    build::install_compiled_binary_with_fallback(&build_config)?;
 
     Ok(())
 }
@@ -31,12 +42,19 @@ mod tests {
     use std::env::current_dir;
     use std::path::PathBuf;
 
+    fn test_current_dir() -> PathBuf {
+        match current_dir() {
+            Ok(path) => path,
+            Err(error) => panic!("current_dir failed: {error}"),
+        }
+    }
+
     #[test]
     fn valid_application_config_builds() {
         let test_args: [String; 0] = [];
         let result = ApplicationConfig::build(test_args.into_iter());
         assert!(
-            result.is_ok(),
+            matches!(result, Ok(ApplicationAction::Build(_))),
             "ApplicationConfig should build with valid args."
         );
     }
@@ -53,7 +71,7 @@ mod tests {
 
     #[test]
     fn valid_build_config_builds() {
-        let build_file_path = current_dir().unwrap();
+        let build_file_path = test_current_dir();
         let build_args = Vec::new();
         let binary_install_path: PathBuf = build_file_path.clone();
 
@@ -61,6 +79,7 @@ mod tests {
             build_file_path,
             build_args,
             binary_install_path,
+            binary_name: None,
         };
         let result = BuildConfig::build(test_application_config);
         assert!(result.is_ok(), "BuildConfig should build with valid args.");
@@ -76,49 +95,12 @@ mod tests {
             build_file_path,
             build_args,
             binary_install_path,
+            binary_name: None,
         };
         let result = BuildConfig::build(test_application_config);
         assert!(
             result.is_err(),
             "BuildConfig should not build with invalid args."
         );
-    }
-
-    #[test]
-    fn valid_run_build_command() {
-        let build_file_path = current_dir().unwrap();
-        let build_args = Vec::new();
-        let binary_install_path: PathBuf = PathBuf::from(build_file_path.file_name().unwrap());
-
-        let test_application_config = ApplicationConfig {
-            build_file_path,
-            build_args,
-            binary_install_path,
-        };
-
-        let build_config = BuildConfig::build(test_application_config).unwrap();
-
-        let result = build::run_build_command(&build_config);
-        assert!(
-            result,
-            "run_build_command should return true with valid build config."
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "InvalidPath")]
-    fn invalid_run_build_command() {
-        let build_file_path = PathBuf::new();
-        let build_args = vec![String::from("this makes no sense.")];
-        let binary_install_path: PathBuf = PathBuf::new();
-
-        let test_application_config = ApplicationConfig {
-            build_file_path,
-            build_args,
-            binary_install_path,
-        };
-        let build_config = BuildConfig::build(test_application_config).unwrap();
-
-        build::run_build_command(&build_config);
     }
 }

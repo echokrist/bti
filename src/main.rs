@@ -1,5 +1,8 @@
 mod cli;
 
 fn main() {
-    cli::lib::run().ok();
+    if let Err(error) = cli::lib::run() {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
 }
